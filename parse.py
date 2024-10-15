@@ -40,12 +40,11 @@ def with_pattern(pattern, regex_group_count=None):
     :return: wrapped function
     """
 
-    def decorator(func):
-        func.pattern = pattern
-        func.regex_group_count = regex_group_count
-        return func
-
-    return decorator
+    return (
+        lambda func: setattr(func, "pattern", pattern)
+        or setattr(func, "regex_group_count", regex_group_count)
+        or func
+    )
 
 
 class int_convert:
@@ -619,7 +618,12 @@ class Parser(object):
     def _to_group_name(self, field):
         # return a version of field which can be used as capture group, even
         # though it might contain '.'
-        group = field.replace(".", "_").replace("[", "_").replace("]", "_").replace("-", "_")
+        group = (
+            field.replace(".", "_")
+            .replace("[", "_")
+            .replace("]", "_")
+            .replace("-", "_")
+        )
 
         # make sure we don't collide ("a.b" colliding with "a_b")
         n = 1

@@ -18,10 +18,8 @@ log = logging.getLogger(__name__)
 
 
 def with_pattern(pattern, regex_group_count=None):
-    r"""Attach a regular expression pattern matcher to a custom type converter
-    function.
-
-    This annotates the type converter with the :attr:`pattern` attribute.
+    """
+    Attach a regular expression pattern matcher to a custom type converter function.
 
     EXAMPLE:
         >>> import parse
@@ -29,7 +27,7 @@ def with_pattern(pattern, regex_group_count=None):
         ... def parse_number(text):
         ...     return int(text)
 
-    is equivalent to:
+        is equivalent to:
 
         >>> def parse_number(text):
         ...     return int(text)
@@ -619,7 +617,12 @@ class Parser(object):
     def _to_group_name(self, field):
         # return a version of field which can be used as capture group, even
         # though it might contain '.'
-        group = field.replace(".", "_").replace("[", "_").replace("]", "_").replace("-", "_")
+        group = (
+            field.replace(".", "_")
+            .replace("[", "_")
+            .replace("]", "_")
+            .replace("-", "_")
+        )
 
         # make sure we don't collide ("a.b" colliding with "a_b")
         n = 1

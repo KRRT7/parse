@@ -18,27 +18,7 @@ log = logging.getLogger(__name__)
 
 
 def with_pattern(pattern, regex_group_count=None):
-    r"""Attach a regular expression pattern matcher to a custom type converter
-    function.
-
-    This annotates the type converter with the :attr:`pattern` attribute.
-
-    EXAMPLE:
-        >>> import parse
-        >>> @parse.with_pattern(r"\d+")
-        ... def parse_number(text):
-        ...     return int(text)
-
-    is equivalent to:
-
-        >>> def parse_number(text):
-        ...     return int(text)
-        >>> parse_number.pattern = r"\d+"
-
-    :param pattern: regular expression pattern (as text)
-    :param regex_group_count: Indicates how many regex-groups are in pattern.
-    :return: wrapped function
-    """
+    """Attach a regular expression pattern matcher to a custom type converter function."""
 
     def decorator(func):
         func.pattern = pattern
@@ -274,12 +254,29 @@ def date_convert(
 
 
 def strf_date_convert(x, _, type):
-    is_date = any("%" + x in type for x in "aAwdbBmyYjUW")
-    is_time = any("%" + x in type for x in "HIpMSfz")
+    date_format_set = {
+        "%a",
+        "%A",
+        "%w",
+        "%d",
+        "%b",
+        "%B",
+        "%m",
+        "%y",
+        "%Y",
+        "%j",
+        "%U",
+        "%W",
+    }
+    time_format_set = {"%H", "%I", "%p", "%M", "%S", "%f", "%z"}
 
     dt = datetime.strptime(x, type)
+
     if "%y" not in type and "%Y" not in type:  # year not specified
         dt = dt.replace(year=datetime.today().year)
+
+    is_date = any(fmt in type for fmt in date_format_set)
+    is_time = any(fmt in type for fmt in time_format_set)
 
     if is_date and is_time:
         return dt
@@ -288,7 +285,7 @@ def strf_date_convert(x, _, type):
     elif is_time:
         return dt.time()
     else:
-        ValueError("Datetime not a date nor a time?")
+        raise ValueError("Datetime not a date nor a time?")
 
 
 # ref: https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes
@@ -457,11 +454,11 @@ class Parser(object):
     @property
     def _match_re(self):
         if self.__match_re is None:
-            expression = r"\A%s\Z" % self._expression
+            expression = rf"\A{self._expression}\Z"
             try:
                 self.__match_re = re.compile(expression, self._re_flags)
             except AssertionError:
-                # access error through sys to keep py3k and backward compat
+                # access error through sys to keep py3k and backward compatibility
                 e = str(sys.exc_info()[1])
                 if e.endswith("this version only supports 100 named groups"):
                     raise TooManyFields(
@@ -469,8 +466,8 @@ class Parser(object):
                     )
             except re.error:
                 raise NotImplementedError(
-                    "Group names (e.g. (?P<name>) can "
-                    "cause failure, as they are not escaped properly: '%s'" % expression
+                    f"Group names (e.g. (?P<name>) can "
+                    f"cause failure, as they are not escaped properly: '{expression}'"
                 )
         return self.__match_re
 
@@ -488,17 +485,12 @@ class Parser(object):
 
     def parse(self, string, evaluate_result=True):
         """Match my format to the string exactly.
-
         Return a Result or Match instance or None if there's no match.
         """
         m = self._match_re.match(string)
         if m is None:
             return None
-
-        if evaluate_result:
-            return self.evaluate_result(m)
-        else:
-            return Match(self, m)
+        return self.evaluate_result(m) if evaluate_result else Match(self, m)
 
     def search(self, string, pos=0, endpos=None, evaluate_result=True):
         """Search the string for my format.
@@ -567,32 +559,28 @@ class Parser(object):
 
     def evaluate_result(self, m):
         """Generate a Result instance for the given regex match object"""
-        # ok, figure the fixed fields we've pulled out and type convert them
-        fixed_fields = list(m.groups())
-        for n in self._fixed_fields:
-            if n in self._type_conversions:
-                fixed_fields[n] = self._type_conversions[n](fixed_fields[n], m)
-        fixed_fields = tuple(fixed_fields[n] for n in self._fixed_fields)
+        fixed_fields = [
+            (
+                self._type_conversions[n](m.group(n + 1), m)
+                if n in self._type_conversions
+                else m.group(n + 1)
+            )
+            for n in self._fixed_fields
+        ]
+        fixed_fields = tuple(fixed_fields)
 
-        # grab the named fields, converting where requested
-        groupdict = m.groupdict()
-        named_fields = {}
-        name_map = {}
-        for k in self._named_fields:
-            korig = self._group_to_name_map[k]
-            name_map[korig] = k
-            if k in self._type_conversions:
-                value = self._type_conversions[k](groupdict[k], m)
-            else:
-                value = groupdict[k]
+        named_fields = {
+            self._group_to_name_map[k]: (
+                self._type_conversions[k](m.group(k), m)
+                if k in self._type_conversions
+                else m.group(k)
+            )
+            for k in self._named_fields
+        }
 
-            named_fields[korig] = value
+        spans = {korig: m.span(name_map[korig]) for korig in named_fields}
+        spans.update({i: m.span(n + 1) for i, n in enumerate(self._fixed_fields)})
 
-        # now figure the match spans
-        spans = {n: m.span(name_map[n]) for n in named_fields}
-        spans.update((i, m.span(n + 1)) for i, n in enumerate(self._fixed_fields))
-
-        # and that's our result
         return Result(fixed_fields, self._expand_named_fields(named_fields), spans)
 
     def _regex_replace(self, match):
@@ -619,7 +607,12 @@ class Parser(object):
     def _to_group_name(self, field):
         # return a version of field which can be used as capture group, even
         # though it might contain '.'
-        group = field.replace(".", "_").replace("[", "_").replace("]", "_").replace("-", "_")
+        group = (
+            field.replace(".", "_")
+            .replace("[", "_")
+            .replace("]", "_")
+            .replace("-", "_")
+        )
 
         # make sure we don't collide ("a.b" colliding with "a_b")
         n = 1
@@ -931,33 +924,13 @@ class ResultIterator(object):
 
 
 def parse(format, string, extra_types=None, evaluate_result=True, case_sensitive=False):
-    """Using "format" attempt to pull values from "string".
-
-    The format must match the string contents exactly. If the value
-    you're looking for is instead just a part of the string use
-    search().
-
-    If ``evaluate_result`` is True the return value will be an Result instance with two attributes:
-
-     .fixed - tuple of fixed-position values from the string
-     .named - dict of named values from the string
-
-    If ``evaluate_result`` is False the return value will be a Match instance with one method:
-
-     .evaluate_result() - This will return a Result instance like you would get
-                          with ``evaluate_result`` set to True
-
-    The default behaviour is to match strings case insensitively. You may match with
-    case by specifying case_sensitive=True.
-
-    If the format is invalid a ValueError will be raised.
-
-    See the module documentation for the use of "extra_types".
-
-    In the case there is no match parse() will return None.
+    """Match my format to the string exactly.
+    Return a Result or Match instance or None if there's no match.
     """
-    p = Parser(format, extra_types=extra_types, case_sensitive=case_sensitive)
-    return p.parse(string, evaluate_result=evaluate_result)
+    m = self._match_re.match(string)
+    if m is None:
+        return None
+    return self.evaluate_result(m) if evaluate_result else Match(self, m)
 
 
 def search(

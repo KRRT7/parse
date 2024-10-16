@@ -36,3 +36,12 @@ version = {attr = "parse.__version__"}
 
 [tool.distutils.bdist_wheel]
 universal = true
+
+
+[tool.codeflash]
+# All paths are relative to this pyproject.toml's directory.
+module-root = "."
+tests-root = "tests"
+test-framework = "pytest"
+ignore-paths = []
+formatter-cmds = ["black $file"]

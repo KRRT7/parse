@@ -445,12 +445,10 @@ class Parser(object):
         if self.__search_re is None:
             try:
                 self.__search_re = re.compile(self._expression, self._re_flags)
-            except AssertionError:
-                # access error through sys to keep py3k and backward compat
-                e = str(sys.exc_info()[1])
-                if e.endswith("this version only supports 100 named groups"):
+            except AssertionError as e:
+                if "this version only supports 100 named groups" in str(e):
                     raise TooManyFields(
-                        "sorry, you are attempting to parse too many complex fields"
+                        "Sorry, you are attempting to parse too many complex fields"
                     )
         return self.__search_re
 
@@ -512,16 +510,11 @@ class Parser(object):
 
         Return either a Result instance or None if there's no match.
         """
-        if endpos is None:
-            endpos = len(string)
+        endpos = endpos or len(string)
         m = self._search_re.search(string, pos, endpos)
         if m is None:
             return None
-
-        if evaluate_result:
-            return self.evaluate_result(m)
-        else:
-            return Match(self, m)
+        return self.evaluate_result(m) if evaluate_result else Match(self, m)
 
     def findall(
         self, string, pos=0, endpos=None, extra_types=None, evaluate_result=True
@@ -567,33 +560,23 @@ class Parser(object):
 
     def evaluate_result(self, m):
         """Generate a Result instance for the given regex match object"""
-        # ok, figure the fixed fields we've pulled out and type convert them
-        fixed_fields = list(m.groups())
-        for n in self._fixed_fields:
-            if n in self._type_conversions:
-                fixed_fields[n] = self._type_conversions[n](fixed_fields[n], m)
-        fixed_fields = tuple(fixed_fields[n] for n in self._fixed_fields)
+        fixed_fields = [
+            self._type_conversions.get(n, lambda x, m: x)(m.group(n + 1), m)
+            for n in self._fixed_fields
+        ]
 
-        # grab the named fields, converting where requested
         groupdict = m.groupdict()
-        named_fields = {}
-        name_map = {}
-        for k in self._named_fields:
-            korig = self._group_to_name_map[k]
-            name_map[korig] = k
-            if k in self._type_conversions:
-                value = self._type_conversions[k](groupdict[k], m)
-            else:
-                value = groupdict[k]
+        named_fields = {
+            self._group_to_name_map[k]: self._type_conversions.get(k, lambda x, m: x)(
+                groupdict[k], m
+            )
+            for k in self._named_fields
+        }
 
-            named_fields[korig] = value
+        spans = {n: m.span(k) for k, n in self._group_to_name_map.items()}
+        spans.update({i: m.span(n + 1) for i, n in enumerate(self._fixed_fields)})
 
-        # now figure the match spans
-        spans = {n: m.span(name_map[n]) for n in named_fields}
-        spans.update((i, m.span(n + 1)) for i, n in enumerate(self._fixed_fields))
-
-        # and that's our result
-        return Result(fixed_fields, self._expand_named_fields(named_fields), spans)
+        return Result(tuple(fixed_fields), named_fields, spans)
 
     def _regex_replace(self, match):
         return "\\" + match.group(1)
@@ -619,7 +602,12 @@ class Parser(object):
     def _to_group_name(self, field):
         # return a version of field which can be used as capture group, even
         # though it might contain '.'
-        group = field.replace(".", "_").replace("[", "_").replace("]", "_").replace("-", "_")
+        group = (
+            field.replace(".", "_")
+            .replace("[", "_")
+            .replace("]", "_")
+            .replace("-", "_")
+        )
 
         # make sure we don't collide ("a.b" colliding with "a_b")
         n = 1
@@ -969,36 +957,22 @@ def search(
     evaluate_result=True,
     case_sensitive=False,
 ):
-    """Search "string" for the first occurrence of "format".
+    """Search the string for my format.
 
-    The format may occur anywhere within the string. If
-    instead you wish for the format to exactly match the string
-    use parse().
+    Optionally start the search at "pos" character index and limit the
+    search to a maximum index of endpos - equivalent to
+    search(string[:endpos]).
 
-    Optionally start the search at "pos" character index and limit the search
-    to a maximum index of endpos - equivalent to search(string[:endpos]).
+    If the ``evaluate_result`` argument is set to ``False`` a
+    Match instance is returned instead of the actual Result instance.
 
-    If ``evaluate_result`` is True the return value will be an Result instance with two attributes:
-
-     .fixed - tuple of fixed-position values from the string
-     .named - dict of named values from the string
-
-    If ``evaluate_result`` is False the return value will be a Match instance with one method:
-
-     .evaluate_result() - This will return a Result instance like you would get
-                          with ``evaluate_result`` set to True
-
-    The default behaviour is to match strings case insensitively. You may match with
-    case by specifying case_sensitive=True.
-
-    If the format is invalid a ValueError will be raised.
-
-    See the module documentation for the use of "extra_types".
-
-    In the case there is no match parse() will return None.
+    Return either a Result instance or None if there's no match.
     """
-    p = Parser(format, extra_types=extra_types, case_sensitive=case_sensitive)
-    return p.search(string, pos, endpos, evaluate_result=evaluate_result)
+    endpos = endpos or len(string)
+    m = self._search_re.search(string, pos, endpos)
+    if m is None:
+        return None
+    return self.evaluate_result(m) if evaluate_result else Match(self, m)
 
 
 def findall(

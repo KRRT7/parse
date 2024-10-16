@@ -543,24 +543,23 @@ class Parser(object):
 
     def _expand_named_fields(self, named_fields):
         result = {}
+        find_subkeys = re.compile(
+            r"\[[^]]+]"
+        )  # Compile regex pattern outside loop for optimization
+
         for field, value in named_fields.items():
-            # split 'aaa[bbb][ccc]...' into 'aaa' and '[bbb][ccc]...'
             n = field.find("[")
             if n == -1:
                 basename, subkeys = field, ""
             else:
                 basename, subkeys = field[:n], field[n:]
 
-            # create nested dictionaries {'aaa': {'bbb': {'ccc': ...}}}
             d = result
             k = basename
-
             if subkeys:
-                for subkey in re.findall(r"\[[^]]+]", subkeys):
+                for subkey in find_subkeys.findall(subkeys):
                     d = d.setdefault(k, {})
                     k = subkey[1:-1]
-
-            # assign the value to the last key
             d[k] = value
 
         return result
@@ -619,7 +618,12 @@ class Parser(object):
     def _to_group_name(self, field):
         # return a version of field which can be used as capture group, even
         # though it might contain '.'
-        group = field.replace(".", "_").replace("[", "_").replace("]", "_").replace("-", "_")
+        group = (
+            field.replace(".", "_")
+            .replace("[", "_")
+            .replace("]", "_")
+            .replace("-", "_")
+        )
 
         # make sure we don't collide ("a.b" colliding with "a_b")
         n = 1

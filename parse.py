@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 
 def with_pattern(pattern, regex_group_count=None):
-    r"""Attach a regular expression pattern matcher to a custom type converter
+    """Attach a regular expression pattern matcher to a custom type converter
     function.
 
     This annotates the type converter with the :attr:`pattern` attribute.
@@ -39,13 +39,8 @@ def with_pattern(pattern, regex_group_count=None):
     :param regex_group_count: Indicates how many regex-groups are in pattern.
     :return: wrapped function
     """
-
-    def decorator(func):
-        func.pattern = pattern
-        func.regex_group_count = regex_group_count
-        return func
-
-    return decorator
+    # Using straightforward inner decorator definition.
+    return lambda func: _attach_pattern(func, pattern, regex_group_count)
 
 
 class int_convert:
@@ -619,7 +614,12 @@ class Parser(object):
     def _to_group_name(self, field):
         # return a version of field which can be used as capture group, even
         # though it might contain '.'
-        group = field.replace(".", "_").replace("[", "_").replace("]", "_").replace("-", "_")
+        group = (
+            field.replace(".", "_")
+            .replace("[", "_")
+            .replace("]", "_")
+            .replace("-", "_")
+        )
 
         # make sure we don't collide ("a.b" colliding with "a_b")
         n = 1
@@ -1056,6 +1056,12 @@ def compile(format, extra_types=None, case_sensitive=False):
     Returns a Parser instance.
     """
     return Parser(format, extra_types=extra_types, case_sensitive=case_sensitive)
+
+
+def _attach_pattern(func, pattern, regex_group_count):
+    func.pattern = pattern
+    func.regex_group_count = regex_group_count
+    return func
 
 
 # Copyright (c) 2012-2020 Richard Jones <richard@python.org>

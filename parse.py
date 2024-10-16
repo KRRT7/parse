@@ -350,7 +350,7 @@ ALLOWED_TYPES = set(list("nbox%fFegwWdDsSl") + ["t" + c for c in "ieahgcts"])
 
 def extract_format(format, extra_types):
     """Pull apart the format [[fill]align][sign][0][width][.precision][type]"""
-    fill = align = None
+    fill, align = None, None
     if format[0] in "<>=^":
         align = format[0]
         format = format[1:]
@@ -359,33 +359,24 @@ def extract_format(format, extra_types):
         align = format[1]
         format = format[2:]
 
-    if format.startswith(("+", "-", " ")):
+    if format and format[0] in "+- ":
         format = format[1:]
 
-    zero = False
-    if format and format[0] == "0":
-        zero = True
-        format = format[1:]
+    zero = format.startswith("0")
+    format = format[1:] if zero else format
 
     width = ""
-    while format:
-        if not format[0].isdigit():
-            break
+    while format and format[0].isdigit():
         width += format[0]
         format = format[1:]
 
     if format.startswith("."):
-        # Precision isn't needed but we need to capture it so that
-        # the ValueError isn't raised.
         format = format[1:]  # drop the '.'
         precision = ""
-        while format:
-            if not format[0].isdigit():
-                break
+        while format and format[0].isdigit():
             precision += format[0]
             format = format[1:]
 
-    # the rest is the type, if present
     type = format
     if (
         type
@@ -619,7 +610,12 @@ class Parser(object):
     def _to_group_name(self, field):
         # return a version of field which can be used as capture group, even
         # though it might contain '.'
-        group = field.replace(".", "_").replace("[", "_").replace("]", "_").replace("-", "_")
+        group = (
+            field.replace(".", "_")
+            .replace("[", "_")
+            .replace("]", "_")
+            .replace("-", "_")
+        )
 
         # make sure we don't collide ("a.b" colliding with "a_b")
         n = 1

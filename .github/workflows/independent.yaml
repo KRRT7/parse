@@ -3,7 +3,7 @@ name: Codeflash_testing
 on:
   push:
     branches:
-      - main
+      - master
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

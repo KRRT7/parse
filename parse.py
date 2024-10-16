@@ -274,21 +274,42 @@ def date_convert(
 
 
 def strf_date_convert(x, _, type):
-    is_date = any("%" + x in type for x in "aAwdbBmyYjUW")
-    is_time = any("%" + x in type for x in "HIpMSfz")
+    has_date_specifier = (
+        "%a" in type
+        or "%A" in type
+        or "%w" in type
+        or "%d" in type
+        or "%b" in type
+        or "%B" in type
+        or "%m" in type
+        or "%y" in type
+        or "%Y" in type
+        or "%j" in type
+        or "%U" in type
+        or "%W" in type
+    )
+    has_time_specifier = (
+        "%H" in type
+        or "%I" in type
+        or "%p" in type
+        or "%M" in type
+        or "%S" in type
+        or "%f" in type
+        or "%z" in type
+    )
 
     dt = datetime.strptime(x, type)
     if "%y" not in type and "%Y" not in type:  # year not specified
         dt = dt.replace(year=datetime.today().year)
 
-    if is_date and is_time:
+    if has_date_specifier and has_time_specifier:
         return dt
-    elif is_date:
+    elif has_date_specifier:
         return dt.date()
-    elif is_time:
+    elif has_time_specifier:
         return dt.time()
     else:
-        ValueError("Datetime not a date nor a time?")
+        raise ValueError("Datetime not a date nor a time?")
 
 
 # ref: https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes
@@ -619,7 +640,12 @@ class Parser(object):
     def _to_group_name(self, field):
         # return a version of field which can be used as capture group, even
         # though it might contain '.'
-        group = field.replace(".", "_").replace("[", "_").replace("]", "_").replace("-", "_")
+        group = (
+            field.replace(".", "_")
+            .replace("[", "_")
+            .replace("]", "_")
+            .replace("-", "_")
+        )
 
         # make sure we don't collide ("a.b" colliding with "a_b")
         n = 1
